@@ -4,8 +4,9 @@
 
 
 (defn get-href [tag]
-  (map #(:href (second %))
-    (filter #(= (first %) :a) (rest(rest tag)))))
+  (->> (nnext tag)
+       (filter #(= (first %) :a))
+       (map #(:href (second %)))))
 
 
 (defn get-links []
@@ -13,11 +14,11 @@
     (loop [result [], tags (list data)]
       (if (empty? tags)
         result
-        (let [tag (first tags)]
+        (let [[tag & rst] tags]
           (recur (if (= (second tag) {:class "r"})
                    (concat result (get-href tag))
                    result)
-            (concat (next tags) (filter #(keyword? (first %)) (rest(rest tag))))))))))
+            (concat rst (filter #(keyword? (first %)) (nnext tag)))))))))
 
 
 (defn -main []
@@ -25,5 +26,6 @@
     (do
 ;      (println result)
       (println (str "Found " (count result) " links!")))))
+
 
 
