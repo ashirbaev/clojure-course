@@ -7,13 +7,12 @@
 
 
 (defn walker [matcher-func next-data-func data]
-  (let [result (matcher-func data)
+  (let [file-name (matcher-func data)
         next-data (next-data-func data)]
     (if-not (empty? next-data)
-      (conj result
-            (doall
-              (map #(walker matcher-func next-data-func %) next-data)))
-      result)))
+      (doall
+        (pmap #(walker matcher-func next-data-func %) next-data))
+      (dosync (alter result conj file-name)))))
 
 
 (defn matcher [regexp]
@@ -25,8 +24,9 @@
 
 (defn find-files [file-name path]
   "TODO: Implement searching for a file using his name as a regexp."
-  (vec (filter #(not (nil? %))
-       (flatten (walker (matcher file-name) #(vec (.listFiles %)) (new File path))))))
+  (do
+    (walker (matcher file-name) #(vec (.listFiles %)) (new File path))
+    (vec (filter #(not (nil? %)) (flatten @result)))))
 
 
 (defn usage []
