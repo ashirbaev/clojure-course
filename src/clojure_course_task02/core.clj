@@ -12,7 +12,7 @@
     (if-not (empty? next-data)
       (doall
         (pmap #(walker matcher-func next-data-func %) next-data))
-      (dosync (alter result conj file-name)))))
+      (dosync (commute result conj file-name)))))
 
 
 (defn matcher [regexp]
