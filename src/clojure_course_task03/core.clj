@@ -205,7 +205,7 @@
 ;; TBD: Implement the following macros
 ;;
 
-(defmacro group [name & body]
+(defmacro group [group-name & body]
   ;; Пример
   ;; (group Agent
   ;;      proposal -> [person, phone, address, price]
@@ -216,17 +216,55 @@
   ;; 3) Создает следующие функции
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
+  (defn create-selects [table-name fields]
+    (let [fields# (mapv keyword fields)]
+      `(let [~(symbol (str table-name "-fields-var")) ~fields#]
+         (select ~table-name ~(cons 'fields fields#)))))
 
-(defmacro user [name & body]
+  (let [env# (loop [perms body, result {}]
+    (let [[table-name _ fields] (take 3 perms)
+          next (drop 3 perms)]
+      (if (empty? perms)
+        result
+        (recur next (conj result {table-name fields})))))]
+    `(do
+       ~@(for [[table-name fields] env#]
+           `(defn ~(->> (str "select" "-" group-name "-" table-name) .toLowerCase symbol) []
+             ~(create-selects table-name fields)))
+       ~@(for [[table-name fields] env#]
+           `(def ~(->> (str "-" group-name "-" table-name "-" "fields") .toLowerCase symbol)
+              ~(mapv keyword fields))))))
+
+
+(defmacro user [user-name & body]
   ;; Пример
   ;; (user Ivanov
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
-  )
+  (defn global-groups [group]
+    (filter #(re-matches
+               (re-pattern (str "^-" group "-[^-]*-fields$"))
+               (str %))
+      (keys (ns-publics *ns*))))
 
-(defmacro with-user [name & body]
+  (defn perms-union [fields]
+    (let [res (vec (set (apply concat fields)))]
+      (if (contains? res :all)
+        [:all]
+        res)))
+
+  (defn group-by-table [group-list]
+    (group-by #(last (re-find #"^-[^-]*-([^-]*)-fields$" (str %))) group-list))
+
+  (let [groups (->> body first rest (map str) (map clojure.string/lower-case))
+        perms# (mapcat global-groups groups)]
+    `(do
+       ~@(for [[table fields] (group-by-table perms#)]
+           `(def ~(symbol (str user-name "-" table "-" "fields-var")) (perms-union ~fields))))))
+
+
+(defmacro with-user [user-name & body]
   ;; Пример
   ;; (with-user Ivanov
   ;;   . . .)
@@ -236,4 +274,13 @@
   ;;    proposal-fields-var и agents-fields-var.
   ;;    Таким образом, функция select, вызванная внутри with-user, получает
   ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
-  )
+  (defn global-name [global]
+    (-> global
+      str
+      (clojure.string/replace #"^[^-]*-(.*)" (fn [a] (last a)))
+      symbol))
+
+  (let [global-users (filter #(re-matches (re-pattern (str user-name "-[^-]*-fields-var$")) (str %))
+                             (keys (ns-publics *ns*)))
+        env# (vec (mapcat (fn [a] [(global-name a) a]) global-users))]
+    `(let ~env# ~@body)))
